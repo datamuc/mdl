@@ -3,16 +3,51 @@
 use 5.010;
 use Mojo::UserAgent;
 
+my $ua = Mojo::UserAgent->new;
 for my $url (@ARGV) {
     given ($url) {
         when (/videos.arte.tv/) { print_arte($url) }
+        when (/ardmediathek.de/) { print_ard($url) }
         default { warn "dunno what to do with $url" }
     }
 }
 
+sub print_ard {
+    my $url = shift;
+    my $html_dom = $ua->get($url)->res->dom;
+    my $name = $html_dom->at('h2')->all_text;
+    warn "Title: $name\n";
+    $name=~y!0-9a-zA-Z_!_!c;
+    $name="ARD-${name}.flv";
+
+    my ($proto,$host,$app,$path);
+    for my $s ($html_dom->find('script')->each) {
+        next unless $s->text;
+        next unless $s->text =~ m!mediaCollection.addMediaStream[^"]*"
+            (rtmp)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*)"!ix;
+        ($proto,$host,$app,$path)=($1,$2,$3,$4);
+        last;
+    };
+
+    unless($proto) {
+        warn "cannot find stream url for $url";
+        return;
+    }
+
+    $path=~s!\.[sm]$!.l!; # Use better stream!
+
+    print_rtmp(
+        proto => $proto,
+        host => $host,
+        app => $app,
+        path => $path,
+        name => $name,
+    )
+
+}
+
 sub print_arte {
     my $url = shift;
-    my $ua = Mojo::UserAgent->new;
     my $html_dom = $ua->get($url)->res->dom;
     my $player = undef;
     my @scripts = $html_dom->find("script")->each(sub {
@@ -58,7 +93,7 @@ sub print_arte {
 sub print_rtmp {
     my %o = @_;
     if($o{player}) {
-        $o{player} = "-W '$o{player}'";
+        $o{player} = "-W '$o{player}' \\\n";
     }
 
     print << "CMD";
@@ -67,8 +102,7 @@ rtmpdump \\
 --host '$o{host}' \\
 --app '$o{app}' \\
 --playpath '$o{path}' \\
-$o{player} \\
---flv '$o{name}'
+$o{player}--flv '$o{name}'
 
 CMD
 }
