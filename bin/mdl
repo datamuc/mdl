@@ -1,0 +1,74 @@
+#!/usr/bin/env perl
+
+use 5.010;
+use Mojo::UserAgent;
+
+for my $url (@ARGV) {
+    given ($url) {
+        when (/videos.arte.tv/) { print_arte($url) }
+        default { warn "dunno what to do with $url" }
+    }
+}
+
+sub print_arte {
+    my $url = shift;
+    my $ua = Mojo::UserAgent->new;
+    my $html_dom = $ua->get($url)->res->dom;
+    my $player = undef;
+    my @scripts = $html_dom->find("script")->each(sub {
+        $player = $1 if ($_->text =~ /url_player\s*=\s*"([^"]*)/)
+    });
+    if (!$player) { warn "cannot find player for $url"; return; }
+
+    my $url1 = $html_dom->at('embed')->attrs->{src};
+    $url1 =~ s/.*videorefFileUrl=//;
+    $url1 =~ s/%(..)/chr hex $1/ge;
+
+    my $xml_dom1 = $ua->get($url1)->res->dom;
+    my $url2 = $xml_dom1->at('video[lang="de"]')->attrs->{ref};
+    if(!$url2) { warn "cannot find second url for $url"; return; }
+
+    warn "$url2\n";
+    my $xml_dom2 = $ua->get($url2)->res->dom;
+    my $name = $xml_dom2->at("video name")->text;
+    warn "title: $name\n";
+    #my $name = $html_dom->at('h2')->all_text;
+    $name=~y!0-9a-zA-Z_!_!c;
+    $name="ARTE-${name}.flv";
+
+
+    my $rtmp = $xml_dom2->at('url[quality="hd"]')->text;
+    if (!($rtmp=~ m!(?<proto>rtmp)://(?<host>[^/]*)/(?<app>.*)/(?<path>MP4:.*)!)){
+            warn "Can't match URL: $rtmp for $url\n";
+            return;
+    };
+
+    my ($proto,$host,$app,$path)=($1,$2,$3,$4);
+
+    print_rtmp(
+        proto => $+{proto},
+        host => $+{host},
+        app => $+{app},
+        path => $+{path},
+        name => $name,
+        player => $player,
+    )
+}
+
+sub print_rtmp {
+    my %o = @_;
+    if($o{player}) {
+        $o{player} = "-W '$o{player}'";
+    }
+
+    print << "CMD";
+rtmpdump \\
+--protocol '$o{proto}' \\
+--host '$o{host}' \\
+--app '$o{app}' \\
+--playpath '$o{path}' \\
+$o{player} \\
+--flv '$o{name}'
+
+CMD
+}
