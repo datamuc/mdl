@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
 use 5.010;
+use strict;
 use Mojo::UserAgent;
 
 my $ua = Mojo::UserAgent->new;
@@ -63,13 +64,13 @@ sub print_arte {
     my $url2 = $xml_dom1->at('video[lang="de"]')->attrs->{ref};
     if(!$url2) { warn "cannot find second url for $url"; return; }
 
-    warn "$url2\n";
     my $xml_dom2 = $ua->get($url2)->res->dom;
+    my $id = $xml_dom2->at("video")->attrs->{id};
     my $name = $xml_dom2->at("video name")->text;
     warn "title: $name\n";
     #my $name = $html_dom->at('h2')->all_text;
     $name=~y!0-9a-zA-Z_!_!c;
-    $name="ARTE-${name}.flv";
+    $name="ARTE-${name}.${id}.flv";
 
 
     my $rtmp = $xml_dom2->at('url[quality="hd"]')->text;
