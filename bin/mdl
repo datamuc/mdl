@@ -1,5 +1,11 @@
 #!/usr/bin/env perl
 
+# download rtmp streams
+# requires Mojolicious
+# usage: mdl url1 url2 ... urlN | sh
+# License: Beerware
+# Mojo port of https://github.com/Sec42/Scripts/blob/master/mediathek-dl/mediathek-dl.pl
+
 use 5.010;
 use strict;
 use Mojo::UserAgent;
