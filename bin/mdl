@@ -9,14 +9,68 @@
 use 5.010;
 use strict;
 use Mojo::UserAgent;
+use URI::Escape;
 
 my $ua = Mojo::UserAgent->new;
 for my $url (@ARGV) {
     given ($url) {
         when (/videos.arte.tv/) { print_arte($url) }
-        when (/ardmediathek.de/) { print_ard($url) }
+        when (/ardmediathek.de|mediathek.daserste.de/) { print_ard($url) }
+        when (/rtl-now.rtl.de/) { print_rtl($url) }
         default { warn "dunno what to do with $url" }
     }
+}
+
+=begin comment
+
+    function InitPlayer(h,w) {
+        var flashvars = {
+                data:"%2Flogic%2Fgenerate_film_xml08.php%3Fpara1%3D40921%26para2%3D0%26ivw%3Dunter_uns%2Fplayer%26tile%3D4%26tile_counter%3D365818%26h%3Da151e47b05882bd4947564db4366a5bc",
+                as:'0',
+                js:'1',
+                dimmer:'1',
+                highlights:'1',
+--
+
+        var attributes = {
+           name:"videoplayer",
+           id:"videoplayer"
+        }
+                swfobject.embedSWF("http://rtl-now.rtl.de/includes/rtlnow_videoplayer09_2.swf?ts=201107020135","videoplayer_container",w,h,"10.2.159","",flashvars,params,attributes);
+
+=cut
+
+sub print_rtl {
+    my $url = shift;
+    my $html_dom = $ua->get($url)->res->dom;
+    my ($data, $swf);
+    for my $s ($html_dom->find("script")->each) {
+        local $_ = $s->text;
+        if (/swfobject.embedSWF\("([^"]*)"/s) {
+            $swf = $1;
+        }
+        if (/flashvars.*?=.*?{.*?data:"([^"]*)"/s) {
+            $data = $1;
+            $data = uri_unescape($data);
+        }
+    }
+
+    if(!$data or !$swf) {
+        warn "couldn't extract player or video data for $url\n";
+        return;
+    }
+
+    my $xml_dom = $ua->get("http://rtl-now.rtl.de$data")->res->dom;
+    my $rtmp = $xml_dom->at('data videoinfo filename')->text;
+
+    if($rtmp !~ /^rtmp/) {
+        warn "cannot find rtmp url for $url\n";
+        return;
+    }
+
+    say $rtmp;
+    say $data;
+    say $swf;
 }
 
 sub print_ard {
@@ -31,7 +85,7 @@ sub print_ard {
     for my $s ($html_dom->find('script')->each) {
         next unless $s->text;
         next unless $s->text =~ m!mediaCollection.addMediaStream[^"]*"
-            (rtmp)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*)"!ix;
+            (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-L.*|hq))"!ix;
         ($proto,$host,$app,$path)=($1,$2,$3,$4);
         last;
     };
@@ -80,7 +134,7 @@ sub print_arte {
 
 
     my $rtmp = $xml_dom2->at('url[quality="hd"]')->text;
-    if (!($rtmp=~ m!(?<proto>rtmp)://(?<host>[^/]*)/(?<app>.*)/(?<path>MP4:.*)!)){
+    if (!($rtmp=~ m!(?<proto>rtmp)://(?<host>[^/]*)/(?<app>.*)/(?<path>(?i:MP4):.*)!)){
             warn "Can't match URL: $rtmp for $url\n";
             return;
     };
