@@ -76,18 +76,28 @@ sub print_rtl {
 sub print_ard {
     my $url = shift;
     my $html_dom = $ua->get($url)->res->dom;
-    my $name = $html_dom->at('h2')->all_text;
+    my $name = $html_dom->at('title')->all_text;
     warn "Title: $name\n";
     $name=~y!0-9a-zA-Z_!_!c;
     $name="ARD-${name}.flv";
 
+    my @regex = (
+        qr!mediaCollection.addMediaStream[^"]*"
+            (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-L.*|hq))"!ix,
+        qr!mediaCollection.addMediaStream[^"]*"
+            (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-M.*|mq))"!ix,
+        qr!mediaCollection.addMediaStream[^"]*"
+            (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-S.*|lq))"!ix,
+    );
     my ($proto,$host,$app,$path);
-    for my $s ($html_dom->find('script')->each) {
+    OUT: for my $s ($html_dom->find('script')->each) {
         next unless $s->text;
-        next unless $s->text =~ m!mediaCollection.addMediaStream[^"]*"
-            (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-L.*|hq))"!ix;
-        ($proto,$host,$app,$path)=($1,$2,$3,$4);
-        last;
+        for(@regex) {
+            if ($s->text =~ /$_/) {
+                ($proto,$host,$app,$path)=($1,$2,$3,$4);
+                last OUT;
+            }
+        }
     };
 
     unless($proto) {
