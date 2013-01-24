@@ -79,15 +79,22 @@ sub print_ard {
     my $name = $html_dom->at('title')->all_text;
     warn "Title: $name\n";
     $name=~y!0-9a-zA-Z_!_!c;
-    $name="ARD-${name}.flv";
+
+#mediaCollection.addMediaStream(0, 2, "rtmp://x4100mp4dynonlc22033.f.o.f.lb.core-cdn.net/22033mdr/ondemand", "mp4:4100mp4dynonl/FCMS-790b9081-714f-4764-9827-a5460af146ea-c7cca1d51b4b.mp4", "default");
+
 
     my @regex = (
+        qr!mediaCollection.addMediaStream\(0,\s*2,\s*"
+            (rtmpt?)://([^/]*)/([^"]*)",\s*"([^"]+)"!ix,
+        qr!mediaCollection.addMediaStream\(0,\s*1,\s*"
+            (rtmpt?)://([^/]*)/([^"]*)",\s*"([^"]+)"!ix,
         qr!mediaCollection.addMediaStream[^"]*"
             (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-L.*|hq))"!ix,
         qr!mediaCollection.addMediaStream[^"]*"
             (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-M.*|mq))"!ix,
         qr!mediaCollection.addMediaStream[^"]*"
             (rtmpt?)://([^/]*)/([^"]*)/",\s*"(mp4:[^"]*.*(?:Web-S.*|lq))"!ix,
+        qr!mediaCollection.addMediaStream.*"(https?)://(.*mp4)"!ix,
     );
     my ($proto,$host,$app,$path);
     OUT: for my $s ($html_dom->find('script')->each) {
@@ -105,8 +112,14 @@ sub print_ard {
         return;
     }
 
+    if($proto =~ /http/) {
+        print("wget -O $name.mp4 ${proto}://$host\n");
+        return;
+    }
+
     $path=~s!\.[sm]$!.l!; # Use better stream!
 
+    $name="ARD-${name}.flv";
     print_rtmp(
         proto => $proto,
         host => $host,
